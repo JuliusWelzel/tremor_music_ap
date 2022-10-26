@@ -3,6 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# ditch data
+data/*
+
 # User-specific files
 *.rsuser
 *.suo
@@ -333,6 +336,7 @@ __pycache__/
 
 # Tabs Studio
 *.tss
+
 
 # Telerik's JustMock configuration file
 *.jmconfig
