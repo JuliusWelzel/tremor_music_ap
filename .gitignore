@@ -4,8 +4,9 @@
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
 # ditch data
-data/*
-results/*
+data/**
+results/**
+
 
 # User-specific files
 *.rsuser
