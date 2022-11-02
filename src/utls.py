@@ -56,7 +56,7 @@ def prep_raw_data(data, fs, lowcut = 1, highcut = 15):
     data_zm = filt - np.nanmean(filt)
 
     # process data in freq domain
-    freqs, psd = welch(data_zm, fs, nperseg = fs, average='median')
+    freqs, psd = welch(data_zm, fs, nperseg = fs * 4, average='median')
 
     idx_freq_oi = np.logical_and(freqs > 1, freqs < 11)
 
