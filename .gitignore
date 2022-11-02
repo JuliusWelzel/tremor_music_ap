@@ -400,3 +400,7 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# private packages
+*egg-info*
+*__pycache__*
