@@ -5,6 +5,7 @@
 
 # ditch data
 data/*
+results/*
 
 # User-specific files
 *.rsuser
