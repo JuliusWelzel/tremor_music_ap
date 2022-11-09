@@ -1,4 +1,5 @@
 from scipy.signal import butter, filtfilt, welch
+from scipy import stats
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -83,4 +84,24 @@ def plot_specs(data_all, fs, freq_lims):
     plt.xlabel('frequency [Hz]')
     plt.ylabel('PSD [V**2/Hz]')
 
+def compute_repeated_stats(data, task_oi):
+
+    idx_task_oi = data["task"] == task_oi
+    idx_visit_oi = data["visit"] != "Follow-up"
+    data_task = data[np.logical_and(idx_task_oi,idx_visit_oi)]
+    data_task = data_task.groupby('id').filter(lambda x: {"Inital","14-days"}.issubset(x['visit']))
+    sumed_axis = data_task.groupby(['id','visit'],as_index=False)[["peak amplitude","peak frequency"]].sum()
+
+    n_rows = sumed_axis.shape[0]
+    sumed_axis["Norm amp"] = np.nan
+    sumed_axis["Norm freq"] = np.nan
+
+    for i in range(0,n_rows):
+        idx_id = sumed_axis["id"].str.match(sumed_axis["id"][i])
+        sumed_axis["Norm amp"][i] = sumed_axis["peak amplitude"][i] / np.sum(sumed_axis["peak amplitude"][idx_id])
+        sumed_axis["Norm freq"][i] = sumed_axis["peak frequency"][i] / np.sum(sumed_axis["peak frequency"][idx_id])
+
+    t_amp, p_amp = stats.ttest_rel(sumed_axis["Norm amp"][sumed_axis.visit == "Inital"], sumed_axis["Norm amp"][sumed_axis.visit == "14-days"])
+    t_freq, p_freq = stats.ttest_rel(sumed_axis["Norm freq"][sumed_axis.visit == "Inital"], sumed_axis["Norm freq"][sumed_axis.visit == "14-days"])
     
+    return t_amp, p_amp, t_freq, p_freq
