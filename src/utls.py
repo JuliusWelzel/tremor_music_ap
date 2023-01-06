@@ -4,16 +4,16 @@ import seaborn as sns
 from scipy import stats
 from scipy.signal import butter, filtfilt, welch, spectrogram
 from pathlib import Path
+from sklearn.decomposition import PCA
 
-
-def butter_bandpass(lowcut, highcut, fs, order=5):
+def butter_bandpass(lowcut, highcut, fs, order=4):
     """Creates filter coefficients for bandpass butterworth filter.
 
     Args:
         lowcut (int): Lower frequency edge
         highcut (int): Upper frequency edge
         fs (int): Sampling rate
-        order (int, optional): Filter order. Defaults to 5.
+        order (int, optional): Filterorder. Defaults to 4.
 
     Returns:
         (ndarray, ndarray): Numerator (b) and denominator (a) polynomials of the butter filter:
@@ -24,8 +24,25 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
     b, a = butter(order, [low, high], btype='band')
     return b, a
 
+def butter_highpass(lowcut, fs, order=4):
+    """Creates filter coefficients for bandpass butterworth filter.
 
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    Args:
+        lowcut (int): Lower frequency edge
+        highcut (int): Upper frequency edge
+        fs (int): Sampling rate
+        order (int, optional): Filterorder. Defaults to 4.
+
+    Returns:
+        (ndarray, ndarray): Numerator (b) and denominator (a) polynomials of the butter filter:
+    """
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    b, a = butter(order, low,  btype='high')
+    return b, a
+
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=4):
     """Filter data using a bandpass butterworth filter.
 
     Args:
@@ -33,12 +50,28 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
         lowcut (int): Lower frequency edge
         highcut (int): Upper frequency edge
         fs (int): Sampling rate
-        order (int, optional): _description_. Defaults to 5.
+        order (int, optional): Filderorder. Defaults to 4.
 
     Returns:
         ndarray: Filtered data
     """
     b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = filtfilt(b, a, data)
+    return y
+
+def butter_highpass_filter(data, lowcut, fs, order=4):
+    """Filter data using a highpass butterworth filter.
+
+    Args:
+        data (ndarray): Raw data
+        lowcut (int): Lower frequency edge
+        fs (int): Sampling rate
+        order (int, optional): Filterorder. Defaults to 4.
+
+    Returns:
+        ndarray: Filtered data
+    """
+    b, a = butter_highpass(lowcut, fs, order=order)
     y = filtfilt(b, a, data)
     return y
 
@@ -64,6 +97,51 @@ def prep_raw_data(data, fs, lowcut = 1, highcut = 12):
     idx_freq_oi = np.logical_and(freqs > lowcut, freqs < highcut)
 
     return data_zm, freqs[idx_freq_oi], psd[idx_freq_oi]
+
+def prep_raw_data_pca(data, fs, lowcut = 0.1):
+    """HP Filter (0.1Hz) PCA to obtain main movement direction.
+
+    Args:
+        data (ndarray): Raw data
+        fs (int): Sampling rate
+
+    Returns:
+        ndarray : Filtered zero mean data, psd and frqs estiamted with welch method.
+    """
+    # process data in time domain
+    raw = np.array(data).T
+    filt = butter_highpass_filter(raw, 0.1, fs)
+
+    pca = PCA(n_components = 3)
+    pcs = np.empty((max(raw.shape), 3))
+
+    # pca first hand
+    pcs[:, :] = pca.fit_transform(filt.T)
+
+
+    # get first spec esttimation
+    freqs, psd = welch(pcs[:,0], fs, nperseg = fs * 2)
+
+    lower_bound = 3
+    upper_bound = 10
+
+    # check if filt boundaries make sense
+    if lower_bound < 3:
+        lower_bound = 3
+    elif upper_bound > 10:
+        upper_bound = 10
+    elif abs(upper_bound - lower_bound) < 4:
+        lower_bound = 3
+        upper_bound = 9
+
+        
+    # filter again around peak frequency
+    filt = butter_bandpass_filter(pcs[:,0], lower_bound, upper_bound, fs)
+    data_zm = filt - np.nanmean(filt)
+
+    idx_freq_oi = np.logical_and(freqs > 2, freqs < 10)
+
+    return data_zm, freqs[idx_freq_oi], psd[idx_freq_oi], pca.explained_variance_ratio_
 
 def plot_specs(data_all, fs, freq_lims):
     """_summary_
@@ -143,6 +221,43 @@ def save_raw_tf_plt(x_zm, y_zm, z_zm, cfg_srate, cfg_freqs_oi, id, path_out):
     axs[1].set_xlabel('Time [sec]')
     axs[1].set_ylim(cfg_freqs_oi)
 
+    fname = id + 'raw_data.png'
+    plt.savefig(Path.joinpath(path_out,fname))
+    plt.close()
+
+
+def save_raw_tf_plt_pca(x, y, z, pca_zm, eigenratios, cfg_srate, cfg_freqs_oi, id, path_out):
+    """_summary_
+
+    Args:
+        pca_zm (_type_): _description_
+        cfg_srate (_type_): _description_
+        cfg_freqs_oi (_type_): _description_
+        id (_type_): _description_
+        path_out (_type_): _description_
+    """
+
+    freqs, times, specs_pca = spectrogram(pca_zm, cfg_srate, nperseg = cfg_srate, noverlap = cfg_srate // 2)
+    time_vec = np.linspace(0,len(pca_zm) / cfg_srate, len(pca_zm))
+    
+    fig,axs = plt.subplots(2,1)
+    fig.suptitle("Sitting relaxed")
+
+    axs[0].plot(time_vec,pca_zm,label='pca')
+    axs[0].plot(time_vec,x,label='x')
+    axs[0].plot(time_vec,y,label='y')
+    axs[0].plot(time_vec,z,label='z')
+    axs[0].set_ylabel('Amplitude [a.u.]')
+    axs[0].set_xlabel('Time [sec]')
+    axs[0].legend()
+
+    axs[1].pcolormesh(times, freqs,np.array([specs_pca]).sum(axis=0), shading='nearest')
+    axs[1].set_ylabel('Frequency [Hz]')
+    axs[1].set_xlabel('Time [sec]')
+    axs[1].set_ylim(cfg_freqs_oi)
+    axs[1].set_title(eigenratios)
+
+    
     fname = id + 'raw_data.png'
     plt.savefig(Path.joinpath(path_out,fname))
     plt.close()
